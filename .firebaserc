@@ -1,0 +1,4 @@
+{
+  "projects": { "default": "haesseoya-games-rank" },
+  "targets": { "haesseoya-games-rank": { "hosting": { "echo": ["echo-sonar"] } } }
+}

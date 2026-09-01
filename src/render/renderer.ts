@@ -152,7 +152,7 @@ export class Renderer {
       ctx.fillStyle = `rgba(0,0,0,${this.transitionAlpha})`;
       ctx.fillRect(0, 0, w, h);
     }
-    if (floor && sim.phase !== 'TITLE') this.drawHud(ctx, sim, floor, hud);
+    if (floor && (sim.phase === 'RUN' || sim.phase === 'PAUSE' || sim.phase === 'TRANSITION' || sim.phase === 'DEAD')) this.drawHud(ctx, sim, floor, hud);
 
     // perf governor for bloom
     const ms = performance.now() - t0;

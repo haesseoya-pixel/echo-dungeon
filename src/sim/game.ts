@@ -91,6 +91,7 @@ export class GameSim {
     this.carryHp = this.maxHp;
     this.carryInv = this.startingInventory();
     this.attractFloor = null;
+    this.floor = null; // never carry state from a previous run
     return this.nextFloor();
   }
 

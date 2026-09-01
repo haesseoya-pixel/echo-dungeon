@@ -373,6 +373,7 @@ const loop = new Loop({
     } else {
       audio.heartbeat(dt, Infinity, false, false);
       hud.compassAngle = null;
+      if (sim.phase !== 'PAUSE') hud.hint = null;
     }
     if (sim.phase === 'TITLE' && inp.any && screens.current === null) screens.showTitle();
   },
@@ -384,7 +385,7 @@ const loop = new Loop({
 function unlockAudio(): void {
   audio.unlock();
   audioUnlocked = true;
-  if (screens.current === 'title') screens.showTitle();
+  screens.hideTapHint();
 }
 input.onFirstGesture = unlockAudio;
 uiRoot.addEventListener('pointerdown', () => unlockAudio(), { passive: true });
@@ -400,11 +401,8 @@ document.addEventListener('visibilitychange', () => {
     loop.resync();
   }
 });
-window.addEventListener('blur', () => {
-  if (sim.phase === 'RUN') handleEvents(sim.togglePause());
-});
 
 screens.showTitle();
 loop.start();
 
-if (import.meta.env.DEV) (window as unknown as { echo: unknown }).echo = { sim, renderer, audio, data, screens, ITEM_KINDS, WIN_FLOOR, localDateString };
+if (import.meta.env.DEV) (window as unknown as { echo: unknown }).echo = { sim, renderer, audio, data, screens, hud, handleEvents, ITEM_KINDS, WIN_FLOOR, localDateString };

@@ -26,13 +26,19 @@ export class Loop {
       if (frame < 0) frame = 0;
       this.acc += frame;
       let steps = 0;
-      while (this.acc >= STEP && steps < MAX_STEPS_PER_FRAME) {
-        this.cb.update(STEP);
-        this.acc -= STEP;
-        steps++;
+      try {
+        while (this.acc >= STEP && steps < MAX_STEPS_PER_FRAME) {
+          this.cb.update(STEP);
+          this.acc -= STEP;
+          steps++;
+        }
+        if (steps === MAX_STEPS_PER_FRAME) this.acc = 0;
+        this.cb.render(this.acc / STEP, frame, ts);
+      } catch (err) {
+        // never let one bad frame kill the game loop
+        console.error('[loop] frame failed', err);
+        this.acc = 0;
       }
-      if (steps === MAX_STEPS_PER_FRAME) this.acc = 0;
-      this.cb.render(this.acc / STEP, frame, ts);
       this.raf = requestAnimationFrame(tick);
     };
     this.raf = requestAnimationFrame(tick);

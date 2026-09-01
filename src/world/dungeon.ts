@@ -324,6 +324,7 @@ function attempt(seed: Seed4, floorIndex: number, diff: Difficulty, attemptNo: n
       const tiles = rngShuffle(rng, roomTiles(grid, r));
       for (const [x, y] of tiles) {
         if (dStart[y * w + x]! < minD || isUsed(x, y)) continue;
+        if (Math.hypot(exit.x - x, exit.y - y) < 4) continue;
         enemies.push({ kind, x, y, room: r.index });
         use(x, y);
         perRoom.set(r.index, (perRoom.get(r.index) ?? 0) + 1);

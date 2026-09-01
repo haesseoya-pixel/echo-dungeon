@@ -56,6 +56,10 @@ export class Screens {
     this.root.replaceChildren();
   }
 
+  hideTapHint(): void {
+    this.root.querySelector('.tap-hint')?.remove();
+  }
+
   private show(name: string, node: HTMLElement, dim = true): void {
     this.current = name;
     this.root.replaceChildren(h('div', { class: `screen ${dim ? 'dim' : ''}` }, node));

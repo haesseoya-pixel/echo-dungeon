@@ -21,6 +21,7 @@ export interface RunStats {
   seen: number;
   cleared: boolean;
   died: boolean;
+  deathCause: string | null;
 }
 
 export type SimEvent =
@@ -62,7 +63,7 @@ export class GameSim {
   }
 
   private emptyStats(): RunStats {
-    return { mode: 'normal', seedStr: '', dateKey: localDateString(), floor: 1, deepest: 1, timeMs: 0, clearTimeMs: null, pulses: 0, stones: 0, damage: 0, seen: 0, cleared: false, died: false };
+    return { mode: 'normal', seedStr: '', dateKey: localDateString(), floor: 1, deepest: 1, timeMs: 0, clearTimeMs: null, pulses: 0, stones: 0, damage: 0, seen: 0, cleared: false, died: false, deathCause: null };
   }
 
   get maxHp(): number {
@@ -181,6 +182,7 @@ export class GameSim {
           this.phase = 'DEAD';
           this.deadT = 0;
           this.stats.died = true;
+          this.stats.deathCause = f.lastHitBy;
           this.accumulate(f);
           this.stats.timeMs = Math.round(this.runTime * 1000);
           out.push({ type: 'dead' });

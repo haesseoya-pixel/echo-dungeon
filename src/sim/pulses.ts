@@ -5,6 +5,7 @@ import { castFan, groupRuns } from '@/world/raycast';
 
 export class PulseSystem {
   pulses: Pulse[] = [];
+  onEmit: ((p: Pulse) => void) | null = null;
   private scratch = new Float32Array(SONAR.rays * 4);
 
   emit(grid: Grid, owner: PulseOwner, x: number, y: number, t0: number, n: number, range: number, fade: number, color: readonly [number, number, number]): Pulse {
@@ -12,6 +13,7 @@ export class PulseSystem {
     const runs = groupRuns(hits, n, TILE, SONAR.runGap);
     const p: Pulse = { x, y, t0, speed: SONAR.speed, range, fade, n, hits, runs, color, owner, revealed: new Set(), expired: false };
     this.pulses.push(p);
+    this.onEmit?.(p);
     // caps per owner: drop oldest
     const cap = owner === 'player' ? SONAR.maxPlayerPulses : owner === 'bat' ? SONAR.maxBatPulses : owner === 'flare' ? 1 : 1;
     const same = this.pulses.filter((q) => q.owner === owner && !q.expired);

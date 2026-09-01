@@ -2,13 +2,33 @@ import type { Blip, BlipKind } from '@/entities/types';
 
 const FOOTPRINT_MAX = 48;
 
-/** Per-floor memory: revealed markers, transient blips, footprints. */
+/** Per-floor memory: revealed markers, transient blips, footprints, and walls the player has already seen. */
 export class Memory {
   blips: Blip[] = [];
   private persistent = new Map<string, Blip>();
   footprints = new Float32Array(FOOTPRINT_MAX * 3); // x, y, t0
   private fpHead = 0;
   fpCount = 0;
+  readonly w: number;
+  readonly h: number;
+  /** 1 = this wall tile has been lit by a pulse at least once */
+  readonly seenWalls: Uint8Array;
+  seenCount = 0;
+
+  constructor(w: number, h: number) {
+    this.w = w;
+    this.h = h;
+    this.seenWalls = new Uint8Array(w * h);
+  }
+
+  markWall(tx: number, ty: number): void {
+    if (tx < 0 || ty < 0 || tx >= this.w || ty >= this.h) return;
+    const i = ty * this.w + tx;
+    if (this.seenWalls[i] === 0) {
+      this.seenWalls[i] = 1;
+      this.seenCount++;
+    }
+  }
 
   addBlip(kind: BlipKind, x: number, y: number, t0: number, life: number, ref: number, persistent = false, label?: string): void {
     if (persistent) {

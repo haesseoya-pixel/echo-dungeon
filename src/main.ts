@@ -1,17 +1,18 @@
 import './styles.css';
 import { Audio } from './audio/audio';
-import { ITEM_KINDS, WIN_FLOOR, type ItemKind } from './config';
+import { FLOOR_INTRO_SECONDS, ITEM_KINDS, WIN_FLOOR, type ItemKind } from './config';
 import { Input } from './core/input';
 import { Loop } from './core/loop';
 import { localDateString } from './core/rng';
 import { getPlayerName, submitScore } from './rank/leaderboard';
-import { Renderer, type HudState } from './render/renderer';
+import { Renderer, type HudState, type MessageKind } from './render/renderer';
 import { getLocalStorage, load, save as saveToStorage, type SaveV1 } from './save/storage';
 import { grantUnlocks } from './save/unlocks';
 import { GameSim, type SimEvent } from './sim/game';
 import { S } from './strings.ko';
 import { Screens } from './ui/screens';
 import { TouchControls } from './ui/touch';
+import type { EnemyKind } from './world/dungeon';
 import { wallsBetween } from './world/los';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -31,7 +32,7 @@ const sim = new GameSim({ mobile: coarse, unlocks: new Set(data.unlocks), palett
 const renderer = new Renderer(canvas, input);
 renderer.shakeEnabled = data.settings.shake;
 renderer.palette = data.settings.palette;
-const hud: HudState = { hint: null, toast: null, toastT: 0, debug: false, compassAngle: null, touch: false };
+const hud: HudState = { hint: null, messages: [], debug: false, compassAngle: null, touch: false, objective: '', intro: null, hitDir: null, wallMemory: data.settings.wallMemory, heartBeat: 0 };
 let audioUnlocked = false;
 
 // ---- records / rank helpers --------------------------------------------------
@@ -86,17 +87,49 @@ async function submitRun(name: string): Promise<string> {
   return S.rank.submitted;
 }
 
+/** Tip shown on the summary screen: relevant to the cause of death when possible, otherwise rotating. */
+function pickTip(): string {
+  const cause = sim.stats.deathCause;
+  if (cause === 'spider') return S.tips[5]!;
+  if (cause === 'predator') return S.tips[6]!;
+  if (cause === 'hunter' && sim.stats.stones === 0) return S.tips[1]!;
+  if (cause === 'hunter') return S.tips[Math.random() < 0.5 ? 0 : 3]!;
+  return S.tips[data.progress.totalRuns % S.tips.length]!;
+}
+
+// ---- messages ----------------------------------------------------------------
+function message(text: string, kind: MessageKind = 'info', secs = 3.2): void {
+  hud.messages.push({ text, t: secs, kind });
+  while (hud.messages.length > 4) hud.messages.shift();
+}
+
+function objectiveText(): string {
+  const f = sim.floor;
+  if (!f) return '';
+  if (f.layout.locked && !f.keyTaken) return S.objective.findKey;
+  if (f.layout.locked && f.keyTaken) return S.objective.toExit;
+  return S.objective.findExit;
+}
+
+function floorIntro(floor: number): void {
+  const f = sim.floor;
+  const sub = floor === WIN_FLOOR ? S.floorIntro.lastFloor : floor > WIN_FLOOR ? S.floorIntro.endless : f && f.layout.locked ? S.floorIntro.findKey : S.floorIntro.findExit;
+  hud.intro = { title: S.floorLabel(floor), sub, t: FLOOR_INTRO_SECONDS };
+}
+
 // ---- screens -------------------------------------------------------------------
 let summaryShown = false;
 const screens = new Screens(uiRoot, {
-  startNormal: () => startRun('normal'),
-  startDaily: () => startRun('daily'),
+  startNormal: () => beginRun('normal'),
+  startDaily: () => beginRun('daily'),
   resume: () => {
     if (sim.phase === 'PAUSE') handleEvents(sim.togglePause());
   },
   toTitle: () => {
     sim.abandon();
     hud.hint = null;
+    hud.messages = [];
+    hud.intro = null;
     screens.showTitle();
     audio.setAmbience(false);
     touch.setVisible(false);
@@ -112,6 +145,7 @@ const screens = new Screens(uiRoot, {
     persist();
     if (k === 'volume') audio.setVolume(data.settings.volume);
     if (k === 'shake') renderer.shakeEnabled = data.settings.shake;
+    if (k === 'wallMemory') hud.wallMemory = data.settings.wallMemory;
     if (k === 'palette') {
       renderer.palette = data.settings.palette;
       sim.opts.palette = data.settings.palette;
@@ -121,15 +155,33 @@ const screens = new Screens(uiRoot, {
   playUi: () => audio.ui(),
   audioUnlocked: () => audioUnlocked,
   submitRank: (name) => submitRun(name),
+  resetGuide: () => {
+    data.progress.guideSeen = false;
+    data.progress.tutorialSeen = [];
+    persist();
+  },
 });
 
 const touch = new TouchControls(touchRoot, input, () => input.queuePause());
 
+/** Shows the guide first for brand-new players, then starts the run. */
+function beginRun(mode: 'normal' | 'daily'): void {
+  if (!data.progress.guideSeen) {
+    screens.showGuide(0, () => screens.showTitle(), () => {
+      data.progress.guideSeen = true;
+      persist();
+      startRun(mode);
+    });
+    return;
+  }
+  startRun(mode);
+}
+
 function startRun(mode: 'normal' | 'daily', seedStr?: string): void {
   summaryShown = false;
-  hud.toast = null;
-  tutorialIdx = 0;
-  tutorialShownAt = -1;
+  hud.messages = [];
+  hud.hitDir = null;
+  currentHint = null;
   handleEvents(sim.startRun(mode, seedStr));
   screens.hide();
   touch.setVisible(touchWanted());
@@ -150,7 +202,6 @@ const HINTS: Hint[] = [
   { id: 'key', text: () => S.tutorial.key, when: () => !!sim.floor && sim.floor.layout.locked && !sim.floor.keyTaken, done: () => !!sim.floor && sim.floor.keyTaken, min: 5 },
   { id: 'listen', text: () => S.tutorial.listen, when: () => sim.floorIndex === 1 && sim.runTime > 25 && !!sim.floor && !sim.floor.memory.hasPersistent('exit', 0), done: () => !!sim.floor && sim.floor.memory.hasPersistent('exit', 0), min: 6 },
 ];
-let tutorialIdx = 0;
 let tutorialShownAt = -1;
 let currentHint: Hint | null = null;
 function updateTutorial(): void {
@@ -193,16 +244,11 @@ function updateTutorial(): void {
 }
 
 // ---- event handling ------------------------------------------------------------
-function toast(text: string, secs = 2.2): void {
-  hud.toast = text;
-  hud.toastT = secs;
-}
-
 function handleEvents(events: SimEvent[]): void {
   for (const ev of events) {
     switch (ev.type) {
       case 'floorStart':
-        toast(S.floorLabel(ev.floor), 1.8);
+        floorIntro(ev.floor);
         if (sim.floor) renderer.snapCamera(sim.floor.player.x, sim.floor.player.y);
         break;
       case 'pause':
@@ -227,12 +273,13 @@ function handleEvents(events: SimEvent[]): void {
         const { newBest, newUnlocks } = applyRunToRecords();
         const name = getPlayerName();
         const rankStatus = name ? submitRun(name) : null;
-        screens.showSummary({ stats: sim.stats, newBest, newUnlocks, rankStatus, canDeeper: ev.type === 'win' && sim.mode === 'normal' });
+        screens.showSummary({ stats: sim.stats, newBest, newUnlocks, rankStatus, canDeeper: ev.type === 'win' && sim.mode === 'normal', tip: pickTip() });
         touch.setVisible(false);
         break;
       }
       case 'transition':
         audio.stairs();
+        hud.messages = [];
         break;
       case 'floor':
         handleFloorEvent(ev.event);
@@ -262,33 +309,41 @@ function handleFloorEvent(e: { kind: string; x: number; y: number; data?: number
       break;
     case 'pickup':
       audio.pickup();
-      toast(S.pickup[e.data as ItemKind] ?? '');
+      message(S.pickup[e.data as ItemKind] ?? '', 'good');
       break;
     case 'noItem':
       audio.denied();
-      if (e.data === 'full') toast(S.itemFull);
-      else if (e.data === 'hpFull') toast(S.hpFull);
+      if (e.data === 'full') message(S.itemFull, 'warn', 2);
+      else if (e.data === 'hpFull') message(S.hpFull, 'warn', 2);
+      else message(S.noItem[e.data as ItemKind] ?? '', 'warn', 2);
       break;
     case 'key':
       audio.key();
-      toast(S.keyTaken, 3);
+      message(S.keyTaken, 'good', 4);
       break;
     case 'locked':
       audio.locked();
-      toast(S.locked, 2.5);
+      message(S.locked, 'warn', 2.5);
       break;
-    case 'hit':
+    case 'hit': {
       audio.hit();
       renderer.hitFlash();
-      renderer.addTrauma(e.data === 2 ? 0.9 : 0.6);
+      const kind = e.data as EnemyKind;
+      renderer.addTrauma(kind === 'predator' ? 0.9 : 0.6);
+      hud.hitDir = { angle: Math.atan2(dy, dx), t: 0.8 };
+      message(S.hit[kind] ?? '피격!', 'danger', 2.5);
       break;
+    }
     case 'trap':
       audio.trap(dx, dy, walls());
       renderer.hitFlash();
       renderer.addTrauma(0.4);
+      hud.hitDir = { angle: Math.atan2(dy, dx), t: 0.8 };
+      message(S.hit.spider, 'danger', 3);
       break;
     case 'throw':
       audio.throwStone();
+      message(S.used.stone, 'info', 2);
       break;
     case 'land':
       audio.stoneLand(dx, dy, walls());
@@ -296,12 +351,18 @@ function handleFloorEvent(e: { kind: string; x: number; y: number; data?: number
     case 'flare':
       audio.flare();
       renderer.pulseFlash();
+      message(S.used.flare, 'warn', 3);
       break;
     case 'bandage':
       audio.bandage();
+      message(S.used.bandage, 'good', 2);
       break;
     case 'silencer':
       audio.silencer();
+      message(S.used.silencer, 'good', 2.5);
+      break;
+    case 'firstSeen':
+      message(S.firstSeen[e.data as EnemyKind] ?? '', e.data === 'bat' ? 'info' : 'warn', 4.5);
       break;
     case 'growl':
       audio.growl(dx, dy, walls());
@@ -328,6 +389,7 @@ function handleFloorEvent(e: { kind: string; x: number; y: number; data?: number
     case 'wake':
       audio.roar(dx, dy, walls());
       renderer.addTrauma(0.25);
+      if (e.kind === 'wake') message('포식자가 깨어났습니다!', 'danger', 3);
       break;
     case 'predatorStep':
       audio.predatorStep(dx, dy, walls());
@@ -343,6 +405,7 @@ function handleFloorEvent(e: { kind: string; x: number; y: number; data?: number
 
 // ---- loop --------------------------------------------------------------------
 let debugOn = false;
+let beatTimer = 0;
 const loop = new Loop({
   update: (dt) => {
     const inp = input.poll();
@@ -356,23 +419,36 @@ const loop = new Loop({
       inp.aimX = wx;
       inp.aimY = wy;
     }
-    if (sim.phase === 'PAUSE' && inp.pause) {
-      // handled by sim; screens updated via events
-    }
     const events = sim.update(dt, inp);
     if (events.length) handleEvents(events);
+    for (const m of hud.messages) m.t -= dt;
+    if (hud.messages.length && hud.messages[0]!.t <= 0) hud.messages = hud.messages.filter((m) => m.t > 0);
+    if (hud.intro) {
+      hud.intro.t -= dt;
+      if (hud.intro.t <= 0) hud.intro = null;
+    }
+    if (hud.hitDir) {
+      hud.hitDir.t -= dt;
+      if (hud.hitDir.t <= 0) hud.hitDir = null;
+    }
     if (sim.phase === 'RUN' && sim.floor) {
       const f = sim.floor;
       audio.heartbeat(dt, f.nearestThreat, f.anyChase, true);
-      if (hud.toastT > 0) hud.toastT -= dt;
+      // visual heartbeat mirrors the audio interval
+      const d = Math.min(10, f.nearestThreat) / 10;
+      const interval = f.nearestThreat > 10 ? 1.4 : 0.35 + 0.85 * Math.pow(d, 1.3);
+      beatTimer += dt;
+      if (beatTimer >= interval) beatTimer = 0;
+      hud.heartBeat = Math.max(0, 1 - beatTimer / 0.25);
       updateTutorial();
-      // compass
+      hud.objective = objectiveText();
       if (f.compass && (f.exitUnlocked || f.keyTaken) && f.player.stillT >= 1) hud.compassAngle = Math.atan2(f.exitY - f.player.y, f.exitX - f.player.x);
       else hud.compassAngle = null;
       if (touch.visible) touch.updateInventory(f.player.inv);
     } else {
       audio.heartbeat(dt, Infinity, false, false);
       hud.compassAngle = null;
+      hud.heartBeat = 0;
       if (sim.phase !== 'PAUSE') hud.hint = null;
     }
     if (sim.phase === 'TITLE' && inp.any && screens.current === null) screens.showTitle();
@@ -405,4 +481,4 @@ document.addEventListener('visibilitychange', () => {
 screens.showTitle();
 loop.start();
 
-if (import.meta.env.DEV) (window as unknown as { echo: unknown }).echo = { sim, renderer, audio, data, screens, hud, handleEvents, ITEM_KINDS, WIN_FLOOR, localDateString };
+if (import.meta.env.DEV) (window as unknown as { echo: unknown }).echo = { sim, renderer, audio, data, screens, hud, handleEvents, message, ITEM_KINDS, WIN_FLOOR, localDateString };

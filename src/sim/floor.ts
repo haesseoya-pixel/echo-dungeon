@@ -6,7 +6,10 @@ import { resolveCircle } from '@/entities/collision';
 import { createEnemy, stunEnemy, updateEnemy, type EnemyContext } from '@/entities/enemies';
 import { Player } from '@/entities/player';
 import type { Enemy, FloorEvent, Item, Ripple, Stone } from '@/entities/types';
-import { generateFloor, type FloorLayout } from '@/world/dungeon';
+import { generateFloor, type EnemyKind, type FloorLayout } from '@/world/dungeon';
+import { angleTable } from '@/world/raycast';
+import type { Pulse } from '@/entities/types';
+import { S } from '@/strings.ko';
 import type { Grid } from '@/world/grid';
 import { wallsBetween } from '@/world/los';
 import { NoiseSystem } from '@/world/noise';
@@ -43,7 +46,9 @@ export class Floor {
   stones: Stone[] = [];
   readonly pulses = new PulseSystem();
   readonly noise = new NoiseSystem();
-  readonly memory = new Memory();
+  readonly memory: Memory;
+  lastHitBy: EnemyKind | null = null;
+  readonly seenKinds = new Set<EnemyKind>();
   ripples: Ripple[] = [];
   simTime = 0;
   keyTaken = false;
@@ -71,6 +76,8 @@ export class Floor {
   constructor(init: FloorInit) {
     this.layout = generateFloor(init.seed, init.floorIndex, init.diff);
     this.grid = this.layout.grid;
+    this.memory = new Memory(this.grid.w, this.grid.h);
+    this.pulses.onEmit = (p) => this.markPulseWalls(p);
     this.diff = init.diff;
     this.floorIndex = init.floorIndex;
     this.mobile = init.mobile;
@@ -90,6 +97,18 @@ export class Floor {
     for (const it of this.layout.items) this.items.push({ id: id++, kind: it.kind, x: (it.x + 0.5) * TILE, y: (it.y + 0.5) * TILE, taken: false });
     // arrival pulse: weak, silent
     this.pulses.emit(this.grid, 'player', this.player.x, this.player.y, 0, this.rayCount(), SONAR.arrivalRange, this.diff.fade, this.pulseColor);
+  }
+
+  /** Remembers which wall tiles a pulse lit, for the faint wall-memory layer. */
+  private markPulseWalls(p: Pulse): void {
+    if (p.owner === 'touch') return;
+    const { cos, sin } = angleTable(p.n);
+    for (let i = 0; i < p.n; i++) {
+      if (p.hits[i * 4 + 3] === -1) continue;
+      const hx = p.hits[i * 4]!;
+      const hy = p.hits[i * 4 + 1]!;
+      this.memory.markWall(Math.floor((hx + cos[i]! * 0.5) / TILE), Math.floor((hy + sin[i]! * 0.5) / TILE));
+    }
   }
 
   private rayCount(): number {
@@ -263,8 +282,14 @@ export class Floor {
           pulse.revealed.add(e.id);
           this.stats.seen.add(e.id);
           e.seenByPulseT = t;
-          if (e.kind === 'spider') this.memory.addBlip('spider', e.x, e.y, t, Infinity, e.id, true);
-          else this.memory.addBlip(e.kind, e.x, e.y, t, pulse.fade * 0.6, e.id);
+          const first = !this.seenKinds.has(e.kind);
+          if (first) {
+            this.seenKinds.add(e.kind);
+            this.events.push({ kind: 'firstSeen', x: e.x, y: e.y, data: e.kind });
+          }
+          const label = first ? S.enemyName[e.kind] : undefined;
+          if (e.kind === 'spider') this.memory.addBlip('spider', e.x, e.y, t, Infinity, e.id, true, label);
+          else this.memory.addBlip(e.kind, e.x, e.y, t, pulse.fade * 0.6, e.id, false, label);
         }
       }
       for (const it of this.items) {
@@ -312,7 +337,10 @@ export class Floor {
           e.dead = true;
           this.memory.removePersistent('spider', e.id);
           this.memory.addBlip('web', e.x, e.y, t, Infinity, this.webSeq++, true);
-          if (p.damage(1, e.x, e.y)) this.stats.damage += 1;
+          if (p.damage(1, e.x, e.y)) {
+            this.stats.damage += 1;
+            this.lastHitBy = 'spider';
+          }
           p.webbed = PLAYER.webbedTime;
           this.playerNoise(NOISE.trap.radius, NOISE.trap.loudness, 'trap', e.x, e.y, true);
           this.events.push({ kind: 'trap', x: e.x, y: e.y });
@@ -330,7 +358,8 @@ export class Floor {
         const dmg = e.kind === 'predator' ? 2 : 1;
         if (p.damage(dmg, e.x, e.y)) {
           this.stats.damage += dmg;
-          this.events.push({ kind: 'hit', x: p.x, y: p.y, data: dmg });
+          this.lastHitBy = e.kind;
+          this.events.push({ kind: 'hit', x: e.x, y: e.y, data: e.kind });
           if (e.kind === 'hunter') stunEnemy(e);
         }
       }

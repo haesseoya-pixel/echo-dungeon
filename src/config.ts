@@ -122,6 +122,8 @@ const TABLE: Omit<Difficulty, 'floor' | 'chaseSpeed' | 'caveRooms' | 'wideCorrid
 ];
 
 export const WIN_FLOOR = 10;
+export const WALL_MEMORY_ALPHA = 0.09;
+export const FLOOR_INTRO_SECONDS = 2.2;
 
 export function difficultyFor(floor: number): Difficulty {
   const f = Math.max(1, Math.floor(floor));

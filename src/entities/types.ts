@@ -126,7 +126,8 @@ export type FloorEventKind =
   | 'hunterStep'
   | 'noItem'
   | 'exitHum'
-  | 'keyChime';
+  | 'keyChime'
+  | 'firstSeen';
 
 export interface FloorEvent {
   kind: FloorEventKind;

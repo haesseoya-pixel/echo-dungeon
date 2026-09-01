@@ -8,13 +8,13 @@ export interface DailyRecord {
 
 export interface SaveV1 {
   v: 1;
-  settings: { volume: number; shake: boolean; touch: 'auto' | 'on' | 'off'; palette: 'default' | 'alt' };
+  settings: { volume: number; shake: boolean; touch: 'auto' | 'on' | 'off'; palette: 'default' | 'alt'; wallMemory: boolean };
   records: {
     normal: { bestFloor: number; bestClearTimeMs: number | null; runs: number };
     daily: Record<string, DailyRecord>;
   };
   unlocks: string[];
-  progress: { maxFloorEver: number; totalPulses: number; totalRuns: number; tutorialSeen: string[]; dailyBestFloorEver: number };
+  progress: { maxFloorEver: number; totalPulses: number; totalRuns: number; tutorialSeen: string[]; dailyBestFloorEver: number; guideSeen: boolean };
 }
 
 export interface StorageLike {
@@ -26,10 +26,10 @@ export interface StorageLike {
 export function defaultSave(): SaveV1 {
   return {
     v: 1,
-    settings: { volume: 0.7, shake: true, touch: 'auto', palette: 'default' },
+    settings: { volume: 0.7, shake: true, touch: 'auto', palette: 'default', wallMemory: true },
     records: { normal: { bestFloor: 0, bestClearTimeMs: null, runs: 0 }, daily: {} },
     unlocks: [],
-    progress: { maxFloorEver: 0, totalPulses: 0, totalRuns: 0, tutorialSeen: [], dailyBestFloorEver: 0 },
+    progress: { maxFloorEver: 0, totalPulses: 0, totalRuns: 0, tutorialSeen: [], dailyBestFloorEver: 0, guideSeen: false },
   };
 }
 
@@ -64,6 +64,7 @@ export function sanitize(raw: unknown): SaveV1 {
       shake: typeof s.shake === 'boolean' ? s.shake : d.settings.shake,
       touch: s.touch === 'on' || s.touch === 'off' ? s.touch : 'auto',
       palette: s.palette === 'alt' ? 'alt' : 'default',
+      wallMemory: typeof s.wallMemory === 'boolean' ? s.wallMemory : true,
     },
     records: {
       normal: { bestFloor: num(rn.bestFloor, 0, 0, 999), bestClearTimeMs: numOrNull(rn.bestClearTimeMs), runs: num(rn.runs, 0, 0, 1e7) },
@@ -76,6 +77,7 @@ export function sanitize(raw: unknown): SaveV1 {
       totalRuns: num(p.totalRuns, 0, 0, 1e7),
       tutorialSeen: Array.isArray(p.tutorialSeen) ? p.tutorialSeen.filter((x): x is string => typeof x === 'string').slice(0, 32) : [],
       dailyBestFloorEver: num(p.dailyBestFloorEver, 0, 0, 999),
+      guideSeen: p.guideSeen === true,
     },
   };
 }

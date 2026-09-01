@@ -558,3 +558,62 @@ table.rank td.n {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* guide */
+.guide-art {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  margin-bottom: 14px;
+  background: #000;
+}
+.guide-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.guide-body {
+  color: var(--text);
+  line-height: 1.6;
+  margin: 4px 0 10px;
+  font-size: 14px;
+}
+.dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 6px;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+}
+.dot.on {
+  background: var(--pulse);
+  box-shadow: 0 0 8px var(--pulse);
+}
+.legend summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  margin: 6px 0;
+}
+.controls-table.small td {
+  font-size: 12px;
+  padding: 4px 4px;
+}
+.tip {
+  background: rgba(var(--pulse-rgb), 0.08);
+  border: 1px solid rgba(var(--pulse-rgb), 0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 10px 0 4px;
+  color: var(--text);
+}
+.tip b {
+  color: var(--pulse);
+}

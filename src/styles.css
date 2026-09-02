@@ -617,3 +617,15 @@ table.rank td.n {
 .tip b {
   color: var(--pulse);
 }
+
+/* ownership verification string for the PacPik games directory (kept in the DOM text, visually unobtrusive) */
+.site-verification {
+  position: fixed;
+  bottom: 2px;
+  left: 4px;
+  font-size: 9px;
+  color: rgba(142, 163, 194, 0.3);
+  font-family: var(--mono);
+  pointer-events: none;
+  z-index: 1;
+}
